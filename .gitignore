@@ -1,0 +1,7 @@
+.env
+__pycache__/
+.DS_Store
+.venv/
+*.pyc
+data/movies.json
+benchmarks/chart.png

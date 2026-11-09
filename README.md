@@ -33,7 +33,8 @@ export MONGO_URI="mongodb+srv://USUARIO:CONTRASENA@CLUSTER.mongodb.net/"
 ### Datos de `sample_mflix`
 
 - **Atlas:** en el clúster, *Load Sample Dataset*.
-- **MongoDB local con Docker** (no requiere instalar nada más):
+- **MongoDB local con Docker** (no requiere instalar nada más). Ejecutar desde una
+  carpeta fuera del repositorio, porque el archivo de datos pesa unos 380 MB:
 
 ```bash
 docker run -d --name mongo-mflix -p 27017:27017 mongo:7
@@ -42,10 +43,17 @@ docker cp sampledata.archive mongo-mflix:/sampledata.archive
 docker exec mongo-mflix mongorestore --archive=/sampledata.archive --nsInclude="sample_mflix.movies"
 ```
 
+`mongorestore` muestra una advertencia porque el archivo viene de MongoDB 8 y el
+contenedor usa la versión 7; la restauración funciona y termina con
+`21349 document(s) restored successfully`. Para verificar y limpiar:
+
 ```bash
-curl https://atlas-education.s3.amazonaws.com/sampledata.archive -o sampledata.archive
-mongorestore --archive=sampledata.archive --nsInclude="sample_mflix.*"
+docker exec mongo-mflix mongosh --quiet --eval 'db.getSiblingDB("sample_mflix").movies.countDocuments()'   # 21349
+rm sampledata.archive
+docker exec mongo-mflix rm /sampledata.archive
 ```
+
+Guía oficial: [Load sample data (local)](https://www.mongodb.com/docs/manual/sample-data/load-sample-data-local/).
 
 ## Ejecución
 
@@ -58,6 +66,10 @@ python comparacion.py    # comparación entre las dos (tarda varios minutos)
 Cada demostración lee las películas de `sample_mflix.movies`, las copia a su propia
 base (`mflix_sync` o `mflix_async`) con carga masiva, ejecuta un ciclo CRUD y corre
 las consultas. **`sample_mflix` nunca se modifica**: solo se lee.
+
+Las dos apps devuelven los mismos resultados. Solo el orden de los títulos de la
+búsqueda "Matrix" puede variar entre una y otra, porque esa consulta no ordena y
+cada app trabaja en su propia copia de la colección.
 
 ## Estructura
 
@@ -106,9 +118,31 @@ y la [guía de async-concurrency](https://www.async-concurrency.com/network-io-p
 
 ## Resultados
 
-Mediciones con los parámetros de `comparacion.py` (2000 películas en 20 lotes de
-100, media de 3 repeticiones tras una de calentamiento), contra un clúster Atlas
-M0, por lo que incluyen latencia de red y varían entre ejecuciones.
+La velocidad depende mucho de la red, así que se midió en dos entornos.
+
+### MongoDB local (Docker)
+
+Una ejecución de cada demostración con la colección completa (21349 documentos,
+lotes de 1000, hasta 10 lotes a la vez en async). Sin repeticiones, por lo que son
+cifras orientativas.
+
+| app | carga masiva | fallidos | consultas (3 en total) |
+|---|---:|---:|---:|
+| sync | 0.48 s | 0 | 0.049 s (en secuencia) |
+| async | 0.33 s | 0 | 0.021 s con `gather()`, 0.021 s con `TaskGroup()` |
+
+### Clúster Atlas M0 (con latencia de red)
+
+Carga de la colección completa (21349 documentos, lotes de 1000, 10 lotes a la vez
+en async), con las demostraciones de cada app:
+
+| app | documentos insertados | fallidos | tiempo |
+|---|---:|---:|---:|
+| sync | 21349 | 0 | 29.13 s |
+| async | 21349 | 0 | 11.10 s |
+
+Benchmark con los parámetros de `comparacion.py` (2000 películas en 20 lotes de
+100, media de 3 repeticiones tras una de calentamiento):
 
 | app | escenario | concurrencia | media (s) | desviación (s) |
 |---|---|---:|---:|---:|
@@ -125,29 +159,25 @@ M0, por lo que incluyen latencia de red y varían entre ejecuciones.
 | sync | consultas | 100 | 5.2551 | 0.2653 |
 | async | consultas | 100 | 5.1011 | 0.2023 |
 
-Carga de la colección completa (21349 documentos, lotes de 1000, 10 lotes a la
-vez en async), con las demostraciones de cada app:
-
-| app | documentos insertados | fallidos | tiempo |
-|---|---:|---:|---:|
-| sync | 21349 | 0 | 29.13 s |
-| async | 21349 | 0 | 11.10 s |
-
 ## Análisis comparativo
 
-**Carga masiva.** Async fue entre 2.6 y 4.1 veces más rápido (11.10 s contra
-29.13 s con toda la colección; 5.18 s contra 21.24 s con 2000 documentos). La app
-async envía hasta 10 lotes a la vez con `Semaphore(10)`; la sync los envía uno por
-uno y espera la respuesta de la red en cada uno. Con lotes pequeños hay más viajes
-de red que solapar, por eso la ventaja es mayor.
+**Carga masiva.** Async fue más rápido en los dos entornos, pero la ventaja
+depende de la red. Con Atlas, donde cada lote paga latencia de red, fue entre 2.6 y
+4.1 veces más rápido (11.10 s contra 29.13 s con toda la colección; 5.18 s contra
+21.24 s con 2000 documentos). Con MongoDB local la ventaja bajó a 1.5 veces (0.33 s
+contra 0.48 s). La app async envía hasta 10 lotes a la vez con `Semaphore(10)`; la
+sync los envía uno por uno y espera la respuesta de cada uno. Lo que async aprovecha
+es ese tiempo de espera, y con un servidor local casi no lo hay.
 
-**Consultas.** Con una sola petición, async fue 2.5 veces más rápido (0.14 s
-contra 0.34 s) porque `gather()` ejecuta las tres consultas a la vez, mientras que
-sync las ejecuta en secuencia; esta comparación favorece a async por diseño. Con 10,
-50 y 100 peticiones simultáneas los tiempos son casi iguales (por ejemplo 5.26 s
-contra 5.10 s con 100) y las desviaciones se solapan. En ambas apps se resuelven
-unas 58 consultas por segundo: el límite lo ponen el clúster compartido y la
-agregación (`$unwind` y `$group` recorren toda la colección), no el driver.
+**Consultas.** Con una sola petición, async fue 2.5 veces más rápido en Atlas (0.14 s
+contra 0.34 s) y 2.3 veces en local (0.021 s contra 0.049 s), porque `gather()`
+ejecuta las tres consultas a la vez, mientras que sync las ejecuta en secuencia;
+esta comparación favorece a async por diseño. `TaskGroup()` tardó lo mismo que
+`gather()`. En Atlas, con 10, 50 y 100 peticiones simultáneas los tiempos son casi
+iguales (por ejemplo 5.26 s contra 5.10 s con 100) y las desviaciones se solapan. En
+ambas apps se resuelven unas 58 consultas por segundo: el límite lo ponen el clúster
+compartido y la agregación (`$unwind` y `$group` recorren toda la colección), no el
+driver.
 
 **CRUD.** Las cuatro operaciones se hacen una tras otra en ambas apps, así que no
 hay ventaja estructural para async. La desviación de sync (1.21 s) es mayor que su
@@ -157,6 +187,8 @@ media (1.01 s), señal de una medición atípica; esta comparación no es conclu
 
 - Async conviene cuando hay muchas operaciones de E/S independientes que pueden
   solaparse: cargas por lotes y varias consultas a la vez.
+- Su ventaja crece con la latencia de red: fue mucho mayor contra Atlas que contra
+  un MongoDB local.
 - Cuando el servidor es el cuello de botella (muchas peticiones pesadas al mismo
   tiempo), las dos apps rinden prácticamente igual.
 - Sync es más simple y suficiente para scripts pequeños o secuenciales.

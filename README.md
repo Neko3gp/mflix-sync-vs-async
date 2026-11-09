@@ -33,8 +33,14 @@ export MONGO_URI="mongodb+srv://USUARIO:CONTRASENA@CLUSTER.mongodb.net/"
 ### Datos de `sample_mflix`
 
 - **Atlas:** en el clúster, *Load Sample Dataset*.
-- **MongoDB local:** descargar el archivo oficial de datos de ejemplo y restaurar
-  solo esa base ([guía](https://www.mongodb.com/docs/manual/sample-data/load-sample-data-local/)):
+- **MongoDB local con Docker** (no requiere instalar nada más):
+
+```bash
+docker run -d --name mongo-mflix -p 27017:27017 mongo:7
+curl https://atlas-education.s3.amazonaws.com/sampledata.archive -o sampledata.archive
+docker cp sampledata.archive mongo-mflix:/sampledata.archive
+docker exec mongo-mflix mongorestore --archive=/sampledata.archive --nsInclude="sample_mflix.movies"
+```
 
 ```bash
 curl https://atlas-education.s3.amazonaws.com/sampledata.archive -o sampledata.archive

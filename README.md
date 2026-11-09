@@ -96,7 +96,7 @@ compararlas lado a lado:
   con 10 lotes a la vez), **CRUD** (las cuatro operaciones seguidas) y **consultas**
   con 1, 10, 50 y 100 peticiones simultáneas (cada petición ejecuta las 3 consultas).
 - Cada escenario se corre una vez de calentamiento (se descarta) y tres veces
-  medidas; la tabla muestra la media y la desviación estándar.
+  medidas;  e muestra una tabla con la media y la desviación estándar, y un resumen con cuántas veces más rápida o más lenta fue async
 - Escribe en una base temporal (`mflix_bench`) que borra al terminar. Las consultas
   leen `sample_mflix`, sin modificarla.
 - En la app síncrona, las peticiones simultáneas se simulan con hilos; en la

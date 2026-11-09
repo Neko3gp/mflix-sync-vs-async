@@ -71,6 +71,56 @@ async def async_queries_concurrently(db, concurrency):
     await asyncio.gather(*(async_app.run_queries_gather(db) for _ in range(concurrency)))
 
 
+# ---------- Presentación de resultados ----------
+def print_table(headers, rows, right=()):
+    """Imprime una tabla con columnas alineadas que además es válida en Markdown.
+
+    `right` son los índices de las columnas que se alinean a la derecha (números).
+    """
+    widths = [max(len(str(cell)) for cell in column) for column in zip(headers, *rows)]
+
+    def format_row(cells):
+        return "| " + " | ".join(
+            str(cell).rjust(width) if i in right else str(cell).ljust(width)
+            for i, (cell, width) in enumerate(zip(cells, widths))
+        ) + " |"
+
+    print(format_row(headers))
+    print("|" + "|".join(
+        "-" * (width + 1) + ":" if i in right else "-" * (width + 2)
+        for i, width in enumerate(widths)
+    ) + "|")
+    for row in rows:
+        print(format_row(row))
+
+
+def print_results(rows):
+    """rows: (app, escenario, concurrencia, media, desviación); sync y async van por pares."""
+    print(f"\nRESULTADOS (media de {RUNS} repeticiones)\n")
+    print_table(
+        ["app", "escenario", "concurrencia", "media (s)", "desviación (s)"],
+        [(app, scenario, concurrency, f"{mean:.4f}", f"{std:.4f}")
+         for app, scenario, concurrency, mean, std in rows],
+        right=(2, 3, 4),
+    )
+
+    summary = []
+    for sync_row, async_row in zip(rows[0::2], rows[1::2]):
+        scenario, sync_mean, async_mean = sync_row[1], sync_row[3], async_row[3]
+        ratio = sync_mean / async_mean
+        if 0.9 <= ratio <= 1.1:
+            verdict = "similar"
+        elif ratio > 1:
+            verdict = f"{ratio:.2f} veces más rápida"
+        else:
+            verdict = f"{1 / ratio:.2f} veces más lenta"
+        label = f"consultas ({sync_row[2]} a la vez)" if scenario == "consultas" else scenario
+        summary.append((label, f"{sync_mean:.4f}", f"{async_mean:.4f}", verdict))
+
+    print("\nRESUMEN: async frente a sync (similar = diferencia menor al 10 %)\n")
+    print_table(["escenario", "sync (s)", "async (s)", "async es"], summary, right=(1, 2))
+
+
 async def main():
     sync_client = sync_app.get_client()
     async_client = async_app.get_client()
@@ -87,13 +137,14 @@ async def main():
         bench_async = async_client[BENCH_DB]
 
         same = sync_app.run_queries(read_sync) == list(await async_app.run_queries_gather(read_async))
-        print(f"Las dos apps devuelven los mismos resultados: {same}\n")
+        print(f"Las dos apps devuelven los mismos resultados: {'sí' if same else 'NO'}\n")
 
         rows = []
 
         def add(app, scenario, concurrency, result):
             rows.append((app, scenario, concurrency, *result))
 
+        print("Midiendo carga masiva...", flush=True)
         add("sync", "carga masiva", 1, measure_sync(
             lambda: sync_app.load_movies_bulk(bench_sync, movies, BATCH_SIZE),
             before=lambda: bench_sync.movies.delete_many({})))
@@ -101,6 +152,7 @@ async def main():
             lambda: async_app.load_movies_bulk(bench_async, movies, BATCH_SIZE, ASYNC_CONCURRENCY),
             before=lambda: bench_async.movies.delete_many({})))
 
+        print("Midiendo CRUD...", flush=True)
         add("sync", "CRUD", 1, measure_sync(
             lambda: sync_crud(bench_sync),
             before=lambda: bench_sync.movies.delete_many({})))
@@ -109,15 +161,13 @@ async def main():
             before=lambda: bench_async.movies.delete_many({})))
 
         for concurrency in QUERY_CONCURRENCY:
+            print(f"Midiendo consultas ({concurrency} a la vez)...", flush=True)
             add("sync", "consultas", concurrency, measure_sync(
                 lambda: sync_queries_concurrently(read_sync, concurrency)))
             add("async", "consultas", concurrency, await measure_async(
                 lambda: async_queries_concurrently(read_async, concurrency)))
 
-        print("| app | escenario | concurrencia | media (s) | desviación (s) |")
-        print("|---|---|---:|---:|---:|")
-        for app, scenario, concurrency, mean, std in rows:
-            print(f"| {app} | {scenario} | {concurrency} | {mean:.4f} | {std:.4f} |")
+        print_results(rows)
     finally:
         sync_client.drop_database(BENCH_DB)
         sync_client.close()

@@ -1,204 +1,163 @@
-# Administración de `sample_mflix.movies`
+# Proyecto 2a Evaluación: base de datos asíncrona vs síncrona (MongoDB + Python)
 
-## Descripción y requisitos
+## Objetivo
 
-Este proyecto administra la colección `movies` de MongoDB Atlas con dos
-implementaciones equivalentes: PyMongo síncrono y PyMongo Async. La base fuente
-`sample_mflix` se usa solo para exportar datos; la aplicación trabaja en
-`mflix_demo`. Se requiere Python 3.11 o superior porque se usa
-`asyncio.TaskGroup`.
+Administrar la colección `movies` de la base `sample_mflix` con dos aplicaciones
+equivalentes y compararlas:
 
-## Configuración de MongoDB Atlas
+- **App asíncrona** (`async_app.py`): PyMongo Async con `AsyncMongoClient`.
+- **App síncrona** (`sync_app.py`): PyMongo con `MongoClient`.
 
-1. Crea un clúster gratuito M0 en [MongoDB Atlas](https://www.mongodb.com/atlas).
-2. En **Database Access**, crea un usuario con permisos `readWriteAnyDatabase`
-   (o `readWrite` sobre las bases del proyecto).
-3. En **Network Access**, agrega la IP desde la que ejecutarás el proyecto.
-4. En el clúster, selecciona **Load Sample Dataset** y verifica
-   `sample_mflix.movies`.
-5. En **Connect > Drivers > Python**, copia la URI de conexión.
-6. Al pegarla en `.env`, quita los símbolos `< >`, no dupliques el prefijo
-   `mongodb+srv://` y usa una contraseña sin caracteres especiales o
-   codificada con URL.
+Cada app ofrece carga masiva, CRUD y consultas. `comparacion.py` mide las dos.
 
-## Instalación y configuración
+## Requisitos e instalación
+
+- Python 3.11 o superior (`asyncio.TaskGroup` no existe antes).
+- Un MongoDB que tenga la base `sample_mflix` (ver abajo).
 
 ```bash
-python3.11 -m venv .venv
+python3 -m venv .venv
 source .venv/bin/activate
 pip install -r requirements.txt
-cp .env.example .env
 ```
 
-Edita `.env` con la URI real. Nunca publiques ese archivo:
+### Conexión
 
-```env
-MONGO_URI=mongodb+srv://USUARIO:CONTRASENA@CLUSTER.mongodb.net/
-DB_NAME=mflix_demo
-SOURCE_DB=sample_mflix
-TEST_DB_NAME=mflix_test
-```
-
-`sample_mflix` es una fuente de solo lectura para `export_data.py`. Las
-operaciones de la aplicación, la interfaz y la carga del proyecto ocurren en
-`mflix_demo`.
-
-## Flujo de ejecución
-
-Ejecuta desde la raíz del repositorio, un comando a la vez:
+Por defecto se conecta a `mongodb://localhost:27017`. Para usar otro servidor
+(por ejemplo Atlas), define la variable de entorno antes de ejecutar:
 
 ```bash
-python test.py
-python -m scripts.export_data
-python -m scripts.load_data --file data/movies.json
-python -m data.setup_indexes
-python interfaz.py
-python -m pytest -q
-python -m benchmarks.runner --sample 2000 --runs 3 --batch-size 100
+export MONGO_URI="mongodb+srv://USUARIO:CONTRASENA@CLUSTER.mongodb.net/"
 ```
 
-`export_data` copia los 21349 documentos de `SOURCE_DB.movies` a
-`data/movies.json`. `load_data` elimina `DB_NAME.movies` (colección e índices)
-antes de cargar con Sync y luego con Async; nunca modifica `sample_mflix`. Por
-eso `setup_indexes` se ejecuta después de la carga. Para pruebas rápidas puedes
-limitar los documentos con `--limit 500` en `export_data` y `load_data`.
+### Datos de `sample_mflix`
 
-El benchmark usa siempre la base aislada `mflix_bench`, la elimina al terminar
-y solo lee `DB_NAME` durante las consultas. La carga desde la interfaz usa
-`mflix_demo_sync.movies` y `mflix_demo_async.movies`, previa confirmación, para
-que las cargas Sync y Async no choquen por `_id`.
+- **Atlas:** en el clúster, *Load Sample Dataset*.
+- **MongoDB local:** descargar el archivo oficial de datos de ejemplo y restaurar
+  solo esa base ([guía](https://www.mongodb.com/docs/manual/sample-data/load-sample-data-local/)):
+
+```bash
+curl https://atlas-education.s3.amazonaws.com/sampledata.archive -o sampledata.archive
+mongorestore --archive=sampledata.archive --nsInclude="sample_mflix.*"
+```
+
+## Ejecución
+
+```bash
+python sync_app.py       # demostración de la app síncrona
+python async_app.py      # demostración de la app asíncrona
+python comparacion.py    # comparación entre las dos (tarda varios minutos)
+```
+
+Cada demostración lee las películas de `sample_mflix.movies`, las copia a su propia
+base (`mflix_sync` o `mflix_async`) con carga masiva, ejecuta un ciclo CRUD y corre
+las consultas. **`sample_mflix` nunca se modifica**: solo se lee.
 
 ## Estructura
 
 ```text
-src/common/config.py       Variables de entorno
-src/sync_app/              MongoClient, CRUD, consultas y bulk síncronos
-src/async_app/             AsyncMongoClient, CRUD, consultas y bulk asíncronos
-scripts/export_data.py     Exportación de SOURCE_DB.movies
-scripts/load_data.py       Carga masiva Sync y Async
-data/setup_indexes.py      Índices y explain
-tests/test_equivalence.py  Pruebas equivalentes
-benchmarks/runner.py       Benchmark y resultados
-interfaz.py                Interfaz CustomTkinter
+sync_app.py      App síncrona: carga masiva, CRUD, consultas
+async_app.py     App asíncrona: las mismas funciones con async/await
+comparacion.py   Comparación de tiempos entre ambas
+requirements.txt Dependencias (solo pymongo)
 ```
 
-## Concurrencia y carga masiva
+Las dos apps tienen las mismas funciones con los mismos nombres:
 
-- `asyncio.gather()` está en `src/async_app/queries.py`, función
-  `run_independent_queries`, para ejecutar tres consultas independientes.
-- `asyncio.TaskGroup()` está en el mismo archivo, función
-  `run_queries_taskgroup`, y en `src/async_app/bulk.py` para lanzar los lotes.
-- `asyncio.Semaphore` está en `src/async_app/bulk.py`, función
-  `load_movies_bulk`, para limitar lotes concurrentes.
-- `bulk_write(ordered=False)` está en
-  `src/async_app/bulk.py` y `src/sync_app/bulk.py`, para insertar lotes y
-  continuar ante IDs duplicados.
+| Funcionalidad | Función |
+|---|---|
+| Carga masiva | `load_movies_bulk` |
+| Crear / Leer / Actualizar / Eliminar | `create_movie`, `get_movie`, `update_movie`, `delete_movie` |
+| Filtro + proyección + orden (año y género) | `find_movies_by_year_and_genre` |
+| Agregación (top 5 de géneros) | `aggregate_movies_by_genre` |
+| Búsqueda por texto en el título (regex) | `search_movies_by_regex` |
+| Las tres consultas juntas | `run_queries` (sync), `run_queries_gather` y `run_queries_taskgroup` (async) |
 
-Ambas funciones bulk clonan los documentos, capturan `BulkWriteError` y
-errores generales, y devuelven `inserted`, `failed` y `errors`.
+## Dónde está lo que pide la actividad
 
-## Uso de la interfaz
+| Requisito | Ubicación |
+|---|---|
+| `AsyncMongoClient` | `async_app.py`, `get_client()` |
+| `bulk_write()` | `load_movies_bulk` en `async_app.py` y en `sync_app.py` (`ordered=False`: un `_id` duplicado no detiene el lote) |
+| `asyncio.Semaphore` | `load_movies_bulk` en `async_app.py`: limita a 10 los lotes que escriben a la vez |
+| `asyncio.TaskGroup()` | `load_movies_bulk` (lanza todos los lotes) y `run_queries_taskgroup` en `async_app.py` |
+| `asyncio.gather()` | `run_queries_gather` en `async_app.py`: las tres consultas independientes al mismo tiempo |
+| CRUD asíncrono | `create_movie`, `get_movie`, `update_movie`, `delete_movie` en `async_app.py` |
+| Consultas asíncronas | `find_movies_by_year_and_genre`, `aggregate_movies_by_genre`, `search_movies_by_regex` en `async_app.py` |
+| App síncrona con PyMongo | `sync_app.py` |
+| Comparación | `comparacion.py` y la sección de resultados de este documento |
 
-Ejecuta:
+### Detalles de PyMongo Async
 
-```bash
-python interfaz.py
-```
+Según el [tutorial de PyMongo 4.14.1](https://pymongo.readthedocs.io/en/4.14.1/async-tutorial.html)
+y la [guía de async-concurrency](https://www.async-concurrency.com/network-io-protocol-handling/async-database-drivers/using-mongodb-with-pymongo-async/):
 
-- **SYNC · PyMongo:** botones para crear, buscar por ID, actualizar, eliminar,
-  buscar por título, filtrar por año/género, top de géneros y carga bulk.
-- **ASYNC · AsyncMongoClient:** las mismas operaciones, además de botones para
-  `gather()`, `TaskGroup()` y carga bulk con `Semaphore`.
-- **COMPARACIÓN:** ejecuta las mismas consultas Sync secuenciales y Async con
-  `gather()`, mostrando tiempo y cantidad de resultados.
-
-La etiqueta **Base activa** muestra `DB_NAME`. Las cargas de la interfaz
-trabajan en bases auxiliares para no borrar ni modificar la base principal.
+- `find()` devuelve un cursor sin `await`; se lee con `await cursor.to_list()`.
+- `aggregate()` sí se espera con `await` y devuelve el cursor.
+- Se crea **un solo cliente** y se reutiliza; al terminar, `await client.close()`.
+- El `Semaphore` evita lanzar más operaciones simultáneas que conexiones disponibles.
+- `bulk_write(..., ordered=False)` sigue insertando aunque un documento falle.
 
 ## Resultados
 
-Todas las mediciones se hicieron contra un clúster M0 de Atlas, por lo que
-incluyen latencia de red y pueden variar entre ejecuciones.
-
-### Carga masiva real (21349 documentos, lotes de 1000, concurrencia 10)
-
-| implementación | documentos | fallidos | tiempo |
-|---|---:|---:|---:|
-| Sync | 21349 | 0 | 29.13 s |
-| Async | 21349 | 0 | 11.10 s |
-
-Una corrida anterior dio 63.96 s (Sync) y 14.08 s (Async); la diferencia entre
-corridas depende de la red.
-
-### Índices (colección completa, 21349 documentos)
-
-| consulta | estado | examinados | devueltos | tiempo (ms) | plan |
-|---|---|---:|---:|---:|---|
-| año + género + título | antes | 21349 | 58 | 49 | COLLSCAN |
-| año + género + título | después | 0 | 58 | 1 | IXSCAN |
-| regex con `i` | antes | 21349 | 4 | 30 | COLLSCAN |
-| regex con `i` | después | 21349 | 4 | 26 | COLLSCAN |
-| agregación | antes | 21349 | 21349 | 62 | COLLSCAN |
-| agregación | después | 21349 | 21349 | 48 | COLLSCAN |
-
-### Benchmark
-
-Generado con `python -m benchmarks.runner --sample 2000 --runs 3 --batch-size 100`
-(carga de 2000 documentos en 20 lotes; consultas sobre `mflix_demo` completa):
+Mediciones con los parámetros de `comparacion.py` (2000 películas en 20 lotes de
+100, media de 3 repeticiones tras una de calentamiento), contra un clúster Atlas
+M0, por lo que incluyen latencia de red y varían entre ejecuciones.
 
 | app | escenario | concurrencia | media (s) | desviación (s) |
 |---|---|---:|---:|---:|
-| sync | carga masiva | 1 | 21.3044 | 0.5579 |
-| async | carga masiva | 10 | 4.8349 | 0.4218 |
-| sync | CRUD | 1 | 0.9699 | 1.1428 |
-| async | CRUD | 1 | 0.3067 | 0.0146 |
-| sync | consultas | 1 | 0.3592 | 0.0497 |
-| async | consultas | 1 | 0.1578 | 0.0224 |
-| sync | consultas | 10 | 0.8943 | 0.1053 |
-| async | consultas | 10 | 0.8680 | 0.0736 |
-| sync | consultas | 50 | 3.3644 | 0.5614 |
-| async | consultas | 50 | 2.7962 | 0.2194 |
-| sync | consultas | 100 | 5.0660 | 0.1815 |
-| async | consultas | 100 | 5.0760 | 0.1927 |
+| sync | carga masiva | 1 | 21.2401 | 0.5714 |
+| async | carga masiva | 10 | 5.1759 | 1.4341 |
+| sync | CRUD | 1 | 1.0092 | 1.2096 |
+| async | CRUD | 1 | 0.3021 | 0.0182 |
+| sync | consultas | 1 | 0.3414 | 0.0616 |
+| async | consultas | 1 | 0.1354 | 0.0190 |
+| sync | consultas | 10 | 1.1100 | 0.3315 |
+| async | consultas | 10 | 1.0208 | 0.0791 |
+| sync | consultas | 50 | 3.0187 | 0.0854 |
+| async | consultas | 50 | 2.8637 | 0.1400 |
+| sync | consultas | 100 | 5.2551 | 0.2653 |
+| async | consultas | 100 | 5.1011 | 0.2023 |
 
-## Análisis comparativo y conclusiones
+Carga de la colección completa (21349 documentos, lotes de 1000, 10 lotes a la
+vez en async), con las demostraciones de cada app:
 
-**Carga masiva.** Async fue entre 2.6 y 4.4 veces más rápido: 11.10 s contra
-29.13 s con los 21349 documentos y lotes de 1000, y 4.83 s contra 21.30 s en el
-benchmark con lotes de 100. Async envía hasta 10 lotes a la vez con
-`Semaphore(10)`, mientras que Sync los envía uno por uno y paga la latencia de
-red de Atlas en cada uno. La ventaja es mayor con lotes pequeños, porque hay más
-viajes de red que solapar, y desaparece cuando solo hay un lote.
+| app | documentos insertados | fallidos | tiempo |
+|---|---:|---:|---:|
+| sync | 21349 | 0 | 29.13 s |
+| async | 21349 | 0 | 11.10 s |
 
-**Consultas.** Con una sola petición, Async fue 2.3 veces más rápido (0.16 s
-contra 0.36 s) porque `asyncio.gather()` ejecuta las tres consultas a la vez,
-mientras que Sync las ejecuta en secuencia; esta comparación favorece a Async
-por diseño. Con 10 y 100 peticiones concurrentes los tiempos son prácticamente
-iguales, y con 50 la diferencia es pequeña (2.80 s contra 3.36 s, con
-desviaciones que se solapan). Ambas apps procesan unas 60 consultas por
-segundo en alta concurrencia: el límite lo ponen el clúster M0 compartido y la
-agregación sin índice que recorre toda la colección, no el driver.
+## Análisis comparativo
 
-**CRUD.** Las cuatro operaciones son secuenciales en ambas apps, por lo que no
-se espera una ventaja estructural de Async. La desviación estándar de Sync
-(1.14 s) es mayor que su media, lo que indica una medición atípica, así que esta
-diferencia no es concluyente.
+**Carga masiva.** Async fue entre 2.6 y 4.1 veces más rápido (11.10 s contra
+29.13 s con toda la colección; 5.18 s contra 21.24 s con 2000 documentos). La app
+async envía hasta 10 lotes a la vez con `Semaphore(10)`; la sync los envía uno por
+uno y espera la respuesta de la red en cada uno. Con lotes pequeños hay más viajes
+de red que solapar, por eso la ventaja es mayor.
 
-**Índices.** El índice compuesto (año, géneros, título) redujo la consulta de
-21349 documentos examinados a 0, porque el índice contiene todo lo que pide la
-consulta (consulta cubierta), y el tiempo bajó de 49 ms a 1 ms. El regex con
-`$options: "i"` no puede usar índices y la agregación con `$unwind` y `$group`
-recorre toda la colección; ambos siguen en COLLSCAN.
+**Consultas.** Con una sola petición, async fue 2.5 veces más rápido (0.14 s
+contra 0.34 s) porque `gather()` ejecuta las tres consultas a la vez, mientras que
+sync las ejecuta en secuencia; esta comparación favorece a async por diseño. Con 10,
+50 y 100 peticiones simultáneas los tiempos son casi iguales (por ejemplo 5.26 s
+contra 5.10 s con 100) y las desviaciones se solapan. En ambas apps se resuelven
+unas 58 consultas por segundo: el límite lo ponen el clúster compartido y la
+agregación (`$unwind` y `$group` recorren toda la colección), no el driver.
 
-**Conclusión.** Async conviene cuando hay muchas operaciones de E/S
-independientes (cargas por lotes, varias consultas a la vez). Sync sigue siendo
-más simple y suficiente para scripts pequeños. Con el clúster saturado, ambas
-convergen.
+**CRUD.** Las cuatro operaciones se hacen una tras otra en ambas apps, así que no
+hay ventaja estructural para async. La desviación de sync (1.21 s) es mayor que su
+media (1.01 s), señal de una medición atípica; esta comparación no es concluyente.
 
-## Limitaciones y reproducción
+## Conclusiones
 
-El benchmark depende de la latencia, carga y límites del clúster M0. Las
-pruebas usan documentos pequeños en `TEST_DB_NAME` y nunca importan las
-21349 películas. `load_data` reemplaza `DB_NAME.movies` y sus índices, por lo
-que debe ejecutarse solo cuando se desea repetir la carga. Los errores de
-conexión se limitan a cinco segundos mediante `serverSelectionTimeoutMS=5000`.
+- Async conviene cuando hay muchas operaciones de E/S independientes que pueden
+  solaparse: cargas por lotes y varias consultas a la vez.
+- Cuando el servidor es el cuello de botella (muchas peticiones pesadas al mismo
+  tiempo), las dos apps rinden prácticamente igual.
+- Sync es más simple y suficiente para scripts pequeños o secuenciales.
+- Una app async solo ayuda si realmente lanza trabajo en paralelo (`gather`,
+  `TaskGroup`, lotes con `Semaphore`); usar `await` en serie no acelera nada.
+
+## Fuentes
+
+- [Tutorial de PyMongo Async 4.14.1](https://pymongo.readthedocs.io/en/4.14.1/async-tutorial.html)
+- [Using MongoDB with PyMongo Async (async-concurrency.com)](https://www.async-concurrency.com/network-io-protocol-handling/async-database-drivers/using-mongodb-with-pymongo-async/)

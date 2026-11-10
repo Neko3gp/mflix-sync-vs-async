@@ -64,6 +64,7 @@ sync_app.py      App síncrona: carga masiva, CRUD, consultas
 async_app.py     App asíncrona: las mismas funciones con async/await
 comparacion.py   Comparación de tiempos entre ambas
 requirements.txt Dependencias (solo pymongo)
+docker-compose.yml MongoDB local con sample_mflix.movies cargada
 ```
 
 Las dos apps tienen las mismas funciones con los mismos nombres, para poder
@@ -179,7 +180,7 @@ y de la [guía de async-concurrency](https://www.async-concurrency.com/network-i
 ### Requisitos
 
 - Python 3.11 o superior (`asyncio.TaskGroup` no existe antes).
-- Docker, para tener un MongoDB local con la base `sample_mflix` (ver abajo).
+- Docker con Docker Compose, para tener un MongoDB local con la base `sample_mflix` (ver abajo).
 
 ```bash
 python3 -m venv .venv
@@ -187,28 +188,36 @@ source .venv/bin/activate
 pip install -r requirements.txt
 ```
 
-### Datos de `sample_mflix` en un MongoDB local (Docker)
+### Datos de `sample_mflix` en un MongoDB local (Docker Compose)
 
-Las apps se conectan a `mongodb://localhost:27017`, que es el contenedor de Docker de
-esta sección. No requiere instalar nada más que Docker. Primero se descarga el archivo
-`sampledata.archive` (conjunto de datos de ejemplo oficial de MongoDB, unos 380 MB)
-desde la guía oficial indicada al final de esta sección y se deja en una carpeta fuera
-del repositorio. Después, desde esa carpeta:
+El archivo `docker-compose.yml` del repositorio levanta todo con un solo comando:
 
 ```bash
-docker run -d --name mongo-mflix -p 27017:27017 mongo:7
-docker cp sampledata.archive mongo-mflix:/sampledata.archive
-docker exec mongo-mflix mongorestore --archive=/sampledata.archive --nsInclude="sample_mflix.movies"
+docker compose up -d
 ```
 
-`mongorestore` muestra una advertencia porque el archivo viene de MongoDB 8
-y el contenedor usa la versión 7; la restauración funciona y termina con
-`21349 document(s) restored successfully`. Para verificar y limpiar:
+Hace tres cosas, en orden:
+
+1. Inicia un MongoDB 7 en `localhost:27017`, que es donde se conectan las apps.
+2. Descarga `sampledata.archive` (conjunto de datos de ejemplo oficial de MongoDB,
+   unos 380 MB) a un volumen de Docker. Solo lo hace la primera vez.
+3. Restaura únicamente `sample_mflix.movies` si la colección está vacía.
+
+La primera vez tarda unos minutos por la descarga. Para saber cuándo terminó:
 
 ```bash
+docker compose logs -f loader      # termina con "21349 document(s) restored successfully"
 docker exec mongo-mflix mongosh --quiet --eval 'db.getSiblingDB("sample_mflix").movies.countDocuments()'   # 21349
-rm sampledata.archive
-docker exec mongo-mflix rm /sampledata.archive
+```
+
+`mongorestore` muestra una advertencia porque el archivo viene de MongoDB 8 y el
+contenedor usa la versión 7; la restauración funciona. Los datos se conservan entre
+reinicios. Comandos útiles:
+
+```bash
+docker compose down        # apaga el servidor (los datos se conservan)
+docker compose up -d       # lo vuelve a levantar sin descargar nada
+docker compose down -v     # borra también los datos y el archivo descargado
 ```
 
 Guía oficial: [Load sample data (local)](https://www.mongodb.com/docs/manual/sample-data/load-sample-data-local/).

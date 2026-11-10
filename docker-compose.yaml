@@ -1,0 +1,59 @@
+# MongoDB local con la base sample_mflix.movies lista para usar.
+#   Levantar:  docker compose up -d      (la primera vez descarga ~380 MB)
+#   Apagar:    docker compose down       (conserva los datos)
+#   Borrar todo (datos y archivo descargado): docker compose down -v
+
+services:
+  # 1) Servidor MongoDB en localhost:27017
+  mongo:
+    image: mongo:7
+    container_name: mongo-mflix
+    ports:
+      - "27017:27017"
+    volumes:
+      - mongo_data:/data/db
+    healthcheck:
+      test: ["CMD", "mongosh", "--quiet", "--eval", "db.adminCommand('ping').ok"]
+      interval: 5s
+      timeout: 5s
+      retries: 20
+
+  # 2) Descarga el archivo de datos de ejemplo (solo si todavía no existe)
+  downloader:
+    image: curlimages/curl:8.10.1
+    user: root
+    entrypoint: ["sh", "-c"]
+    command:
+      - |
+        if [ -s /data/sampledata.archive ]; then
+          echo "sampledata.archive ya descargado."
+        else
+          curl -fL https://atlas-education.s3.amazonaws.com/sampledata.archive -o /data/sampledata.archive
+        fi
+    volumes:
+      - sample_archive:/data
+
+  # 3) Restaura sample_mflix.movies (solo si la colección está vacía) y termina
+  loader:
+    image: mongo:7
+    depends_on:
+      mongo:
+        condition: service_healthy
+      downloader:
+        condition: service_completed_successfully
+    volumes:
+      - sample_archive:/data:ro
+    entrypoint: ["sh", "-c"]
+    command:
+      - |
+        COUNT=$$(mongosh --host mongo --quiet --eval 'db.getSiblingDB("sample_mflix").movies.countDocuments()')
+        if [ "$$COUNT" -gt 0 ]; then
+          echo "sample_mflix.movies ya tiene $$COUNT documentos; no se restaura."
+        else
+          mongorestore --host mongo --archive=/data/sampledata.archive --nsInclude="sample_mflix.movies"
+        fi
+    restart: "no"
+
+volumes:
+  mongo_data:
+  sample_archive:

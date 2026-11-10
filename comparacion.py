@@ -15,7 +15,7 @@ SAMPLE = 2000                      # películas para la carga masiva
 BATCH_SIZE = 100                   # tamaño de lote -> 20 lotes
 ASYNC_CONCURRENCY = 10             # lotes simultáneos en la carga async
 RUNS = 3                           # repeticiones medidas por escenario
-QUERY_CONCURRENCY = [1, 10, 50, 100]
+QUERY_CONCURRENCY = [1, 10, 50, 100] # niveles de concurrencia para las consultas
 
 
 def stats(times):

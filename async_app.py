@@ -83,17 +83,17 @@ async def delete_movie(db, movie_id):
 
 
 # ---------- Consultas ----------
-async def find_movies_by_year_and_genre(db, year, genre, limit=10):
+async def find_movies_by_year_and_genre(db, year, genre, limit=10): 
     """Filtro compuesto + proyección + orden por título."""
     # find devuelve un cursor asíncrono; la consulta se ejecuta al consumirlo.
     cursor = db.movies.find(
         {"year": year, "genres": genre}, {"_id": 0, "title": 1, "year": 1}
-    ).sort("title", 1).limit(limit)
+    ).sort("title", 1).limit(limit) # Orden ascendente por título
     # to_list consume el cursor sin bloquear el hilo que ejecuta asyncio.
     return await cursor.to_list()  # find() no se espera con await; to_list() sí
 
 
-async def aggregate_movies_by_genre(db):
+async def aggregate_movies_by_genre(db): #aggregate devuelve un cursor asíncrono; la consulta se ejecuta al consumirlo
     """Top 5 de géneros con más películas."""
     # El pipeline separa arrays, cuenta cada género, ordena y conserva los cinco primeros.
     pipeline = [

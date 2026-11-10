@@ -63,7 +63,7 @@ cancela las demás y `gather` no.
 sync_app.py      App síncrona: carga masiva, CRUD, consultas
 async_app.py     App asíncrona: las mismas funciones con async/await
 comparacion.py   Comparación de tiempos entre ambas
-gui_app.py       Interfaz gráfica (tkinter) que reúne todas las funciones
+ui.py       Interfaz gráfica (tkinter) que reúne todas las funciones
 requirements.txt Dependencias (solo pymongo)
 docker-compose.yml MongoDB local con sample_mflix.movies cargada
 ```
@@ -115,7 +115,7 @@ base en la que se ejecutan.
 - Lee 2000 películas de `sample_mflix` y comprueba que las dos apps devuelven los
   mismos resultados (imprime `sí`).
 - Mide tres escenarios: **carga masiva** (2000 documentos en 20 lotes de 100; la async
-  con 10 lotes a la vez), **CRUD** (las cuatro operaciones seguidas) y **consultas**
+  con 10 lotes a la vez), **CRUD** (las cuatro operaciones seuidas) y **consultas**
   con 1, 10, 50 y 100 peticiones simultáneas (cada petición ejecuta las 3 consultas).
 - Cada escenario se corre una vez de calentamiento (se descarta) y tres veces
   medidas; se muestra una tabla con la media y la desviación estándar, y un resumen
@@ -233,12 +233,12 @@ python comparacion.py    # comparación entre las dos
 
 ### Interfaz gráfica (opcional)
 
-`gui_app.py` reúne las funciones del proyecto en una ventana hecha con `tkinter`
+`ui_app.py` reúne las funciones del proyecto en una ventana hecha con `tkinter`
 (incluido en Python, sin dependencias nuevas). No reemplaza a las apps: llama a las
 funciones de `sync_app.py`, `async_app.py` y `comparacion.py`.
 
 ```bash
-python gui_app.py
+python ui_app.py
 ```
 
 | Pestaña | Qué permite |

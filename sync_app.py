@@ -1,12 +1,11 @@
 """App síncrona (PyMongo): carga masiva, CRUD y consultas sobre sample_mflix.movies."""
-import os
 import re
 import time
 
 from pymongo import InsertOne, MongoClient
 from pymongo.errors import BulkWriteError
 
-MONGO_URI = os.getenv("MONGO_URI", "mongodb://localhost:27017")
+MONGO_URI = "mongodb://localhost:27017"  # MongoDB local (Docker)
 SOURCE_DB = "sample_mflix"  # base original: solo se lee
 APP_DB = "mflix_sync"       # copia donde trabaja esta app
 

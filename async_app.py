@@ -1,13 +1,12 @@
 """App asíncrona (PyMongo Async): carga masiva, CRUD y consultas sobre sample_mflix.movies."""
 import asyncio
-import os
 import re
 import time
 
 from pymongo import AsyncMongoClient, InsertOne
 from pymongo.errors import BulkWriteError
 
-MONGO_URI = os.getenv("MONGO_URI", "mongodb://localhost:27017")
+MONGO_URI = "mongodb://localhost:27017"  # MongoDB local (Docker)
 SOURCE_DB = "sample_mflix"  # base original: solo se lee
 APP_DB = "mflix_async"      # copia donde trabaja esta app
 

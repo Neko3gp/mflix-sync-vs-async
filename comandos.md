@@ -38,6 +38,18 @@ python async_app.py
 python comparacion.py
 ```
 
+Opcional: abrir la interfaz gráfica con todas las funciones:
+
+```bash
+python ui.py
+```
+
+Si aparece `No module named '_tkinter'` (pasa con Python de Homebrew en Mac):
+
+```bash
+brew install python-tk
+```
+
 ## 4. Apagar y limpiar
 
 Apagar el servidor (los datos se conservan):

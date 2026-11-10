@@ -63,6 +63,7 @@ cancela las demás y `gather` no.
 sync_app.py      App síncrona: carga masiva, CRUD, consultas
 async_app.py     App asíncrona: las mismas funciones con async/await
 comparacion.py   Comparación de tiempos entre ambas
+gui_app.py       Interfaz gráfica (tkinter) que reúne todas las funciones
 requirements.txt Dependencias (solo pymongo)
 docker-compose.yml MongoDB local con sample_mflix.movies cargada
 ```
@@ -229,6 +230,27 @@ python sync_app.py       # demostración de la app síncrona
 python async_app.py      # demostración de la app asíncrona
 python comparacion.py    # comparación entre las dos
 ```
+
+### Interfaz gráfica (opcional)
+
+`gui_app.py` reúne las funciones del proyecto en una ventana hecha con `tkinter`
+(incluido en Python, sin dependencias nuevas). No reemplaza a las apps: llama a las
+funciones de `sync_app.py`, `async_app.py` y `comparacion.py`.
+
+```bash
+python gui_app.py
+```
+
+| Pestaña | Qué permite |
+|---|---|
+| Estado | Verificar la conexión y ver cuántos documentos hay en `sample_mflix` y en las dos copias |
+| Carga masiva | Cargar con la app síncrona o asíncrona, eligiendo el tamaño de lote y cuántos lotes a la vez (`Semaphore`) |
+| CRUD | Crear, leer, actualizar y eliminar una película con cualquiera de las dos apps |
+| Consultas | Ejecutar las tres consultas en secuencia, con `gather()` o con `TaskGroup()` y ver el tiempo |
+| Comparación | Correr `comparacion.py` y ver la tabla de resultados dentro de la ventana |
+
+Cada operación corre en un hilo aparte, así que la ventana no se congela mientras
+MongoDB trabaja.
 
 Las dos apps devuelven los mismos resultados. Solo el orden de los títulos de la
 búsqueda "Matrix" puede variar entre una y otra, porque esa consulta no ordena y
